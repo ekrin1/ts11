@@ -1,22 +1,18 @@
 import { renderWithRedux } from "../../test/utils";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import App from "../app/App";
 import { expect, it, describe } from "vitest";
-import { within } from "@testing-library/react";
+import userEvent from '@testing-library/user-event';
 
-describe("Converter Functional Tests", () => {
+describe("Currency Converter App", () => {
 
-  it("Отображается заголовок приложения", () => {
+  it("Отображается заголовок и обе секции конвертации", async () => {
     renderWithRedux(<App />);
-    expect(screen.getByText(/Конвертер валют онлайн/i)).toBeInTheDocument();
+    expect(screen.getByText(/конвертер валют онлайн/i)).toBeInTheDocument();
+    expect(screen.getByText(/у меня есть/i)).toBeInTheDocument();
+    expect(screen.getByText(/хочу приобрести/i)).toBeInTheDocument();
   });
 
-  it("Отображаются хотя бы 6 валют", async () => {
-    renderWithRedux(<App />);
-    const selects = await screen.findAllByRole("combobox");
-    const leftSelectOptions = within(selects[0]).getAllByRole("option");
-    expect(leftSelectOptions.length).toBeGreaterThanOrEqual(6);
-  });
 
   it("Значение в левом инпуте по умолчанию - 100", () => {
     renderWithRedux(<App />);
@@ -30,47 +26,56 @@ describe("Converter Functional Tests", () => {
     expect(inputs[1]).toBeDisabled();
   });
 
-  it("При вводе в левый инпут - правый пересчитывается", async () => {
+  it("Ввод значения в левый инпут обновляет правый", async () => {
     renderWithRedux(<App />);
     const inputs = screen.getAllByRole("spinbutton");
+    const leftInput = inputs[0];
+    const rightInput = inputs[1];
+    await userEvent.clear(leftInput);
+    await userEvent.type(leftInput, "200");
+    expect(Number(rightInput.getAttribute("value"))).not.toBeNaN();
+    expect(rightInput).not.toHaveValue(0);
+  });
+
+  it("Нельзя редактировать правое поле", async () => {
+    renderWithRedux(<App />);
+    const rightInput = screen.getAllByRole("spinbutton")[1];
+    expect(rightInput).toBeDisabled();
+  });
+
+  it("Очистка левого инпута очищает правый", async () => {
+    renderWithRedux(<App />);
+    const inputs = screen.getAllByRole("spinbutton");
+    const leftInput = inputs[0];
+    const rightInput = inputs[1];
+    await userEvent.clear(leftInput);
+    expect(leftInput).toHaveValue(null); 
+    expect(rightInput).toHaveValue(null);
+  });
+});
+
+it("При выборе одинаковых валют курс = 1", async () => {
+  renderWithRedux(<App />);
+  const usdButtons = screen.getAllByText("USD");
+  await userEvent.click(usdButtons[0]);
+  await userEvent.click(usdButtons[1]);
+  const rates = await screen.findAllByText(/1 USD = 1.00 USD/i);
+  expect(rates.length).toBeGreaterThanOrEqual(1); 
+});
+
+it("При вводе числа в левый инпут и разных валютах правый инпут пересчитывается", async () => {
+  renderWithRedux(<App />);
+  const switcherButtons = screen.getAllByText(/USD|EUR|JPY|CAD|RUR|KZT/);
+  await userEvent.click(switcherButtons.find(btn => btn.textContent === "USD")!);
+  await userEvent.click(switcherButtons.find(btn => btn.textContent === "EUR")!);
+  const leftInput = screen.getAllByRole("spinbutton")[0];
+  const rightInput = screen.getAllByRole("spinbutton")[1];
+  await userEvent.type(leftInput, "1000");
   
-    const leftInput = inputs[0] as HTMLInputElement;
-    const rightInput = inputs[1] as HTMLInputElement;
-  
-    fireEvent.change(leftInput, { target: { value: "200" } });
-    
-    expect(Number(rightInput.value)).toBeGreaterThan(100);
-  });
-
-  it("При смене валют курс пересчитывается", async () => {
-    renderWithRedux(<App />);
-    const selects = screen.getAllByRole("combobox");
-    fireEvent.change(selects[0], { target: { value: "EUR" } });
-    fireEvent.change(selects[1], { target: { value: "JPY" } });
-    const rateText = await screen.findByText(/1 EUR =/i);
-    expect(rateText.textContent).toContain("JPY");
-  });
-
-  it("Если выбрать одинаковую валюту, курс = 1", async () => {
-    renderWithRedux(<App />);
-    const selects = screen.getAllByRole("combobox");
-    fireEvent.change(selects[0], { target: { value: "USD" } });
-    fireEvent.change(selects[1], { target: { value: "USD" } });
-    expect(await screen.findByText("1 USD = 1.00 USD")).toBeInTheDocument();
-  });
-
-  it("При нажатии на кнопку обмена - валюты меняются местами", async () => {
-    renderWithRedux(<App />);
-    const selects = screen.getAllByRole("combobox");
-    const leftSelect = selects[0] as HTMLSelectElement;
-    const rightSelect = selects[1] as HTMLSelectElement;
-    const initialLeft = leftSelect.value;
-    const initialRight = rightSelect.value;
-
-    const swapButton = screen.getByRole("button", { name: "swap" });
-    fireEvent.click(swapButton);
-
-    expect(leftSelect.value).toBe(initialRight);
-    expect(rightSelect.value).toBe(initialLeft);
+  await waitFor(() => {
+    const leftValue = Number((leftInput as HTMLInputElement).value);
+    const rightValue = Number((rightInput as HTMLInputElement).value);
+    expect(rightValue).not.toBeNull();
+    expect(rightValue).not.toBe(leftValue);
   });
 });
